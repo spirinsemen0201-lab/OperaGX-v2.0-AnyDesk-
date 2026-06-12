@@ -1,4 +1,4 @@
-name: OperaGX PC
+name: Cloud PC + AnyDesk + Opera GX (Forced Drop Layout)
 
 on:
   workflow_dispatch:
@@ -59,21 +59,14 @@ jobs:
 
       - name: Clean and Hide Active Infrastructure Windows
         run: |
-          Write-Host "Minimizing background console layer safely..."
-          # Uses target process signatures instead of Shell.MinimizeAll to protect virtual pagefiles
-          $code = '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);'
-          $type = Add-Type -MemberDefinition $code -Name "Win32ShowWindowAsync" -Namespace "Win32" -PassThru
-          $process = Get-Process -Id $pid
-          $handle = $process.MainWindowHandle
-          if ($handle -eq [IntPtr]::Zero) {
-              $typeDefinition = '[DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();'
-              $kernel32 = Add-Type -MemberDefinition $typeDefinition -Name "Win32GetConsoleWindow" -Namespace "Win32" -PassThru
-              $handle = $kernel32::GetConsoleWindow()
-          }
-          if ($handle -ne [IntPtr]::Zero) {
-              # 2 explicitly targets SW_SHOWMINIMIZED safely without triggering virtual ram allocation warnings
-              $type::ShowWindowAsync($handle, 2) | Out-Null
-          }
+          Write-Host "Sending infrastructure host container to the taskbar..."
+          # Uses a virtual keyboard sequence to force-collapse topmost active console frames
+          $wshell = New-Object -ComObject WScript.Shell
+          Start-Sleep -Seconds 2
+          # Win + Down Arrow (Restores/Minimizes active interface)
+          $wshell.SendKeys([char]171 + "{DOWN}")
+          Start-Sleep -Milliseconds 500
+          $wshell.SendKeys([char]171 + "{DOWN}")
 
       - name: Optimize Resolution for Mobile Display
         run: |
