@@ -105,18 +105,18 @@ jobs:
           # Establish connection via localhost.run reverse endpoint proxy over standard SSH
           Start-Process ssh -ArgumentList "-R 80:localhost:3389 nokey@localhost.run", "-o StrictHostKeyChecking=no", "-o ServerAliveInterval=60" -RedirectStandardOutput $logFile -NoNewWindow
           
-          Write-Host "Gathering link generation metrics..."
-          Start-Sleep -Seconds 8
+          Write-Host "Waiting for tunnel generation..."
+          Start-Sleep -Seconds 10
           
-          # Extract generated endpoint domain out of logs
+          # Refined parser to target the explicit string format from the log file
           $LogContent = Get-Content $logFile
-          $TunnelInfo = $LogContent | Select-String "tunneled with tls via"
+          $TunnelLine = $LogContent | Select-String "lhr.life tunneled with tls via"
           
-          if ($TunnelInfo) {
-              # Parse out the clean hostname (e.g. randomstring.lhr.life)
-              $CleanAddress = ($TunnelInfo -split "via ")[1].Trim()
+          if ($TunnelLine) {
+              # Parse out just the hostname portion (e.g., xxxxxx.lhr.life)
+              $CleanAddress = ($TunnelLine -split " tunneled")[0].Trim()
               
-              # ANSI Escape Sequences for high-visibility styling
+              # Clear console colors using ANSI Escape Sequences for terminal highlighting
               $Esc = [char]27
               $Cyan = "$Esc[36m"
               $Yellow = "$Esc[33m"
@@ -133,7 +133,7 @@ jobs:
               Write-Host "${Cyan}###########################################################################${Reset}"
               Write-Host ""
           } else {
-              Write-Warning "Tunnel initialization encountered a delay. Inspecting raw log stream..."
+              Write-Warning "Tunnel address signature not found in standard buffer. Displaying raw dump below:"
               Get-Content $logFile -ErrorAction SilentlyContinue
           }
 
