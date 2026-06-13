@@ -1,4 +1,4 @@
-name: Cloud PC + AweSun Dedicated Server Connection
+name: Cloud PC + Auto-Fetch AweSun Connection
 
 on:
   workflow_dispatch:
@@ -27,17 +27,38 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Start-Service -Name "TermService" -ErrorAction SilentlyContinue
 
-      - name: Download and Silently Install AweSun
+      - name: Force-Fetch AweSun Installer Headlessly
         run: |
-          Write-Host "Fetching official AweSun deployment package..."
           $url = "https://download.awesun.com/windows/AweSun_Setup.exe"
           $installer = "$env:TEMP\AweSun_Setup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $installer
           
-          Write-Host "Executing silent structural installation..."
-          # Running with flags to bypass interactive setup windows entirely
-          Start-Process -FilePath $installer -ArgumentList "/S", "/allusers" -Wait
-          Start-Sleep -Seconds 10
+          # Built-in robust download loop (tries up to 3 times if network drops)
+          for ($i = 1; $i -le 3; $i++) {
+              try {
+                  Write-Host "Download attempt $i of 3..."
+                  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                  Invoke-WebRequest -Uri $url -OutFile $installer -TimeoutSec 60 -ErrorAction Stop
+                  if ((Get-Item $installer).Length -gt 10MB) {
+                      Write-Host "✅ Download complete and verified!"
+                      break
+                  }
+              } catch {
+                  Write-Warning "Attempt $i failed. Retrying in 5 seconds..."
+                  Start-Sleep -Seconds 5
+              }
+          }
+
+      - name: Install AweSun Silently
+        run: |
+          $installer = "$env:TEMP\AweSun_Setup.exe"
+          if (Test-Path $installer) {
+              Write-Host "Executing silent structural installation..."
+              Start-Process -FilePath $installer -ArgumentList "/S", "/allusers" -Wait
+              Start-Sleep -Seconds 12
+          } else {
+              Write-Error "Could not retrieve setup binary safely."
+              exit 1
+          }
 
       - name: Force Start AweSun Service and Parse Credentials
         run: |
@@ -47,40 +68,27 @@ jobs:
               $aweSunPath = "${env:ProgramFiles (x86)}\AweSun\AweSun.exe"
           }
           
-          # Initialize the service explicitly
           Start-Process $aweSunPath -ArgumentList "-service" -NoNewWindow
           Start-Sleep -Seconds 15
           
-          Write-Host "Extracting connection metrics from configuration layer..."
+          Write-Host "Extracting connection metrics..."
           $configPath = "$env:AppData\AweSun\config.ini"
-          if (-not (Test-Path $configPath)) {
-              $configPath = "C:\ProgramData\AweSun\config.ini"
-          }
+          if (-not (Test-Path $configPath)) { $configPath = "C:\ProgramData\AweSun\config.ini" }
           
-          # Reading the configuration to grab your ID and Password automatically
           if (Test-Path $configPath) {
               $config = Get-Content $configPath
               $AweSunID = ($config | Select-String "id=").Line -replace "id=", ""
               $AweSunPw = ($config | Select-String "pwd=").Line -replace "pwd=", ""
               
-              # ANSI Escape Sequences for high-visibility terminal highlights
               $Esc = [char]27
-              $Cyan = "$Esc[36m"
-              $Yellow = "$Esc[33m"
-              $Green = "$Esc[32m"
-              $Reset = "$Esc[0m"
-
-              Write-Host ""
-              Write-Host "${Cyan}###########################################################################${Reset}"
-              Write-Host "${Yellow}🚨 DEDICATED AWESUN REMOTE COMPUTER SESSION READY 🚨${Reset}"
-              Write-Host "📱 Open the AweSun App on your mobile device or computer to connect."
-              Write-Host "###########################################################################${Reset}"
-              Write-Host "${Green}🆔 AWESUN DEVICE ID: $AweSunID${Reset}"
-              Write-Host "${Green}🔑 PASSCODE / PASSWORD: $AweSunPw${Reset}"
-              Write-Host "${Cyan}###########################################################################${Reset}"
-              Write-Host ""
+              Write-Host "`n${Esc}[36m###########################################################################${Esc}[0m"
+              Write-Host "${Esc}[33m🚨 DEDICATED AWESUN REMOTE COMPUTER SESSION READY 🚨${Esc}[0m"
+              Write-Host "${Esc}[36m###########################################################################${Esc}[0m"
+              Write-Host "${Esc}[32m🆔 AWESUN DEVICE ID: $AweSunID${Esc}[0m"
+              Write-Host "${Esc}[32m🔑 PASSCODE / PASSWORD: $AweSunPw${Esc}[0m"
+              Write-Host "${Esc}[36m###########################################################################${Esc}[0m`n"
           } else {
-              Write-Warning "Configuration matrix delayed initialization. Checking process state..."
+              Write-Warning "Configuration matrix delayed initialization."
               Get-Process | Where-Object {$_.Name -like "*AweSun*"}
           }
 
