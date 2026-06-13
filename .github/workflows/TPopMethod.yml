@@ -75,37 +75,39 @@ jobs:
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
+          # Removed --desktopshortcut=1 from arguments to stop the installer from forcing a browser launch window
+          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0" -Wait
           Start-Sleep -Seconds 5
           
-          # Force terminate the automatic pop-up window so it doesn't block the screen
+          # Hard-kill any background instances the installer spawned anyway
           Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
           
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
           
-          if (Test-Path "$userDesktop\Opera GX.lnk") {
-              Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
-          }
+          # Clean up any generic shortcut the installer left behind
+          if (Test-Path "$userDesktop\Opera GX.lnk") { Remove-Item "$userDesktop\Opera GX.lnk" -Force }
+          if (Test-Path "$publicDesktop\Opera GX.lnk") { Remove-Item "$publicDesktop\Opera GX.lnk" -Force }
           
           Write-Host "Configuring explicit launcher shortcut with forced promo link and sidebar flags..."
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
           
+          # Build your custom link shortcut exactly as specified
           $WshShell = New-Object -ComObject WScript.Shell
           $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
           $Shortcut.TargetPath = $operaExe
           $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GXRewards,GXRewardsSidebarItem --with-feature:gx-rewards=1"
           $Shortcut.Save()
 
-      - name: Launch RustDesk and Custom Configured Browser
+      - name: Launch RustDesk (Leave Open) and Custom Browser (Behind It)
         run: |
-          # Fire up RustDesk so it acts as our primary window context
+          # Fire up RustDesk so it stays front and center on the screen
           $rdExe = "C:\Program Files\RustDesk\rustdesk.exe"
           Start-Process -FilePath $rdExe -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 4
 
-          # Launch Opera GX behind it via your custom engineered shortcut layout
+          # Launch Opera GX using your custom arguments link
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           Start-Process "$publicDesktop\Opera GX Browser.lnk"
           Start-Sleep -Seconds 6
