@@ -1,4 +1,4 @@
-name: Cloud PC + Web Browser Link + Opera GX (Python Native Stable)
+name: Cloud PC + Web Browser Link + Opera GX (Multi-User Safe)
 
 on:
   workflow_dispatch:
@@ -38,40 +38,43 @@ jobs:
           Invoke-WebRequest -Uri "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx" -OutFile "$env:TEMP\OperaGXSetup.exe"
           Start-Process -FilePath "$env:TEMP\OperaGXSetup.exe" -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0" -Wait
 
-      - name: Deploy Web Interface & Secure Tunnel Engine
+      - name: Deploy Web Interface & Dynamic Gateway Engines
         run: |
-          # Use Python's package manager to handle the websocket bridge natively
+          # Install Python websockify for backend stability
           pip install websockify --quiet
+          
+          # Install localtunnel globally via npm to handle dynamic edge URLs safely
+          npm install -g localtunnel --silent
+          
           New-Item -ItemType Directory -Path "C:\noVNC" -Force
           Invoke-WebRequest -Uri "https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.zip" -OutFile "novnc.zip"
           Expand-Archive -Path "novnc.zip" -DestinationPath "C:\noVNC" -Force
           Copy-Item -Path "C:\noVNC\noVNC-1.5.0\*" -Destination "C:\noVNC" -Recurse -Force
-          Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "tunnel.exe"
 
-      - name: Start Services & Verify Handshake
+      - name: Start Services & Generate Unique Instant URLs
         run: |
           Write-Host "Launching Native Python Web Bridge..."
-          # Running via explicit python module guarantees background execution stability
           Start-Process python -ArgumentList "-m websockify 8080 localhost:5900 --web C:\noVNC"
           
-          Write-Host "Verifying port 8080 handshake..."
+          Write-Host "Verifying local backend initialization..."
           $retries = 0
           while (-not (Test-NetConnection -ComputerName 127.0.0.1 -Port 8080).TcpTestSucceeded -and $retries -lt 15) {
-              Write-Host "Waiting for service infrastructure... ($retries/15)"
               Start-Sleep -Seconds 2
               $retries++
           }
           
-          Write-Host "Launching Cloudflare Tunnel..."
-          $LogFile = "$env:TEMP\tunnel.log"
-          Start-Process .\tunnel.exe -ArgumentList "tunnel", "--url", "http://127.0.0.1:8080" -RedirectStandardError $LogFile
+          Write-Host "Requesting isolated, non-clashing edge domain map..."
+          $LogFile = "$env:TEMP\localtunnel.log"
           
-          Write-Host "Stabilizing connection routes..."
-          Start-Sleep -Seconds 20
+          # Call localtunnel explicitly to map port 8080
+          Start-Process cmd.exe -ArgumentList "/c lt --port 8080 > `"$LogFile`""
+          Start-Sleep -Seconds 7
           
-          $WebLink = (Get-Content $LogFile -Raw) | Select-String -Pattern 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | Select-Object -ExpandProperty Matches | Select-Object -ExpandProperty Value -First 1
-          if ($WebLink) {
-              $FinalUrl = $WebLink + "/vnc.html"
+          # Extract the cleanly propagated unique URL
+          $RawLink = (Get-Content $LogFile -Raw) | Select-String -Pattern 'https://[a-zA-Z0-9-]+\.loca\.lt' | Select-Object -ExpandProperty Matches | Select-Object -ExpandProperty Value -First 1
+          
+          if ($RawLink) {
+              $FinalUrl = $RawLink + "/vnc.html"
               Write-Host "===================================================="
               Write-Host "      WEB-BROWSER CLOUD PC IS READY TO CONNECT      "
               Write-Host "===================================================="
@@ -79,7 +82,7 @@ jobs:
               Write-Host " PASSWORD  : ${{ env.VNC_PASS }}"
               Write-Host "===================================================="
           } else {
-              Write-Error "CRITICAL: Cloudflare failed to register the tunnel."
+              Write-Error "CRITICAL: Dynamic gateway assignment timed out."
           }
 
       - name: Keep alive
