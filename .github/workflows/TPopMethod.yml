@@ -28,30 +28,26 @@ jobs:
       - name: Force Full HD Resolution
         run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
 
-      - name: Install and Configure TightVNC Server (Native Encryption Fix)
+      - name: Install and Configure TightVNC Server (Silent Registry Injection)
         run: |
           Invoke-WebRequest -Uri "https://www.tightvnc.com/download/2.8.84/tightvnc-2.8.84-gpl-setup-64bit.msi" -OutFile "$env:TEMP\tightvnc.msi"
           Start-Process msiexec.exe -ArgumentList "/i `"$env:TEMP\tightvnc.msi`" /quiet /qn SERVER_REGISTER_AS_SERVICE=1" -Wait
           
-          Start-Sleep -Seconds 5
+          # Allow the system a short buffer period to complete initialization tasks
+          Start-Sleep -Seconds 10
           
-          $vncExe = "${env:ProgramFiles}\TightVNC\tvncserver.exe"
+          # Inject configurations explicitly via standard native command shell tools to ensure true compatibility
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v AuthRequired /t REG_DWORD /d 1 /f
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v AuthType /t REG_DWORD /d 1 /f
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v AllowLoopback /t REG_DWORD /d 1 /f
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v AcceptLocalConnections /t REG_DWORD /d 1 /f
           
-          # FIX: Force the server executable to generate its own valid internal hash for 'Pass1234'
-          # This completely bypasses raw hex injection failures
-          Start-Process -FilePath $vncExe -ArgumentList "-controlpass=Pass1234" -Wait
-          Start-Process -FilePath $vncExe -ArgumentList "-setpassword=Pass1234" -Wait
+          # Standard hex representation structure for target validation
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v Password /t REG_BINARY /d 2147667a55aa6b39 /f
+          reg add "HKLM\SOFTWARE\TightVNC\Server" /v ControlPassword /t REG_BINARY /d 2147667a55aa6b39 /f
           
-          # Configure network loopback properties in the registry safely
-          $vncReg = "HKLM:\SOFTWARE\TightVNC\Server"
-          if (Test-Path $vncReg) {
-              Set-ItemProperty -Path $vncReg -Name "AuthRequired" -Value 1 -Type DWord
-              Set-ItemProperty -Path $vncReg -Name "AuthType" -Value 1 -Type DWord
-              Set-ItemProperty -Path $vncReg -Name "AllowLoopback" -Value 1 -Type DWord
-              Set-ItemProperty -Path $vncReg -Name "AcceptLocalConnections" -Value 1 -Type DWord
-          }
-          
-          # Reload the server service with the newly encrypted credentials
+          Start-Sleep -Seconds 2
+          # Restart the service to force the environment to pick up the updated settings
           Restart-Service -Name "tvnserver" -Force
 
       - name: Download & Force Consumer Build of Opera GX
