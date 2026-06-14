@@ -38,47 +38,35 @@ jobs:
           $targets = @("Unity Hub.lnk", "R 4.6.0.lnk", "Firefox.lnk", "Google Chrome.lnk", "Claim Rewards Here.lnk")
           foreach ($target in $targets) { Remove-Item "$publicDesktop\$target" -Force -ErrorAction SilentlyContinue }
 
-      - name: Download, Install & Force-Launch Opera GX (Bypassing Welcome Screens)
+      - name: Download & Force Consumer Build of Opera GX
         run: |
-          Invoke-WebRequest -Uri "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx" -OutFile "$env:TEMP\OperaGXSetup.exe"
+          Write-Host "Fetching consumer-stable Opera GX Core..."
+          $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx"
+          $installer = "$env:TEMP\OperaGXSetup.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer
           
-          Write-Host "Running unattended browser deployment..."
-          Start-Process -FilePath "$env:TEMP\OperaGXSetup.exe" -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--skip-setup-screens=1" -Wait
-          Start-Sleep -Seconds 5
-
-          $paths = @(
-              "$env:ProgramFiles\Opera GX\launcher.exe",
-              "$env:ProgramFiles(x86)\Opera GX\launcher.exe",
-              "$env:ProgramFiles\Opera\launcher.exe",
-              "$env:ProgramFiles(x86)\Opera\launcher.exe",
-              "$env:LocalAppData\Programs\Opera GX\launcher.exe"
-          )
-
-          $launcher = $null
-          foreach ($p in $paths) {
-              if (Test-Path $p) {
-                  $launcher = $p
-                  break
-              }
+          Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
+          
+          $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
+          $userDesktop = "$env:USERPROFILE\Desktop"
+          
+          if (Test-Path "$userDesktop\Opera GX.lnk") {
+              Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
           }
+          
+          Write-Host "Configuring explicit launcher shortcut with forced promo link and sidebar flags..."
+          $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
+          if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
+          
+          $WshShell = New-Object -ComObject WScript.Shell
+          $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
+          $Shortcut.TargetPath = $operaExe
+          # Routes directly to your link, suppresses the intro splash, and injects feature flags
+          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --enable-features=GXRewards,GXRewardsSidebarItem --with-feature:gx-rewards=1"
+          $Shortcut.Save()
 
-          if ($launcher) {
-              Write-Host "Found Opera GX launcher at: $launcher"
-              
-              $args = @(
-                  "https://www.opera.com/gx/forsaken",
-                  "--no-first-run",
-                  "--no-welcome",
-                  "--no-default-browser-check",
-                  "--guest",
-                  "--disable-features=UpgradeToGxl"
-              )
-              
-              Start-Process -FilePath $launcher -ArgumentList $args
-          } else {
-              Write-Error "CRITICAL ERROR: Unable to detect Opera GX system binary paths dynamically."
-              exit 1
-          }
+          # Force launch the freshly created shortcut block
+          Start-Process -FilePath "$publicDesktop\Opera GX Browser.lnk"
 
       - name: Parse Runtime Requirements
         run: |
