@@ -83,32 +83,29 @@ jobs:
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          # Runs your original working setup parameters
+          # Runs setup silently and leaves browser closed
           Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
           Start-Sleep -Seconds 5
 
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
-          # Force create the directory structure directly so Windows definitely has a target path
+          # Ensure target profile path structure exists
           $targetDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
           if (-not (Test-Path $targetDir)) { 
               New-Item -ItemType Directory -Path $targetDir -Force | Out-Null 
           }
           $prefPath = "$targetDir\Preferences"
 
-          # Construct a clean base JSON with the sidebar and gx_rewards pinned explicitly
-          Write-Host "Pre-seeding layout properties into the target configuration profile..."
+          # Create a correctly structured base JSON with visibility wrapping GxRewards
+          Write-Host "Seeding exact GxRewards properties into the profile preferences..."
           $baseConfig = @{
-              ui = @{
-                  sidebar = @{
-                      visible = $true
-                      pinned_items = @("gx_rewards")
-                  }
+              visibility = @{
+                  GxRewards = $true
               }
           }
 
-          # Convert object to compressed JSON format and commit it directly to the target file path
+          # Compress to a clean single-line JSON structure and save
           $baseConfig | ConvertTo-Json -Depth 100 -Compress | Set-Content $prefPath -Force
           Write-Host "Profile configuration seeded successfully."
           
