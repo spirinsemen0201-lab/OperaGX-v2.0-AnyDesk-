@@ -1,3 +1,4 @@
+
 name: AnyDesk
 
 on:
@@ -30,15 +31,12 @@ jobs:
               if (Test-Path "$publicDesktop\$target") { Remove-Item "$publicDesktop\$target" -Force -ErrorAction SilentlyContinue }
               if (Test-Path "$userDesktop\$target") { Remove-Item "$userDesktop\$target" -Force -ErrorAction SilentlyContinue }
           }
-          Write-Host "Pacing workflow... Resting environment for 8 seconds."
-          Start-Sleep -Seconds 8
 
       - name: Download and Force Install AnyDesk
         run: |
           $url = "https://download.anydesk.com/AnyDesk.exe"
           $dst = "$env:TEMP\AnyDesk.exe"
           Invoke-WebRequest -Uri $url -OutFile $dst
-          Start-Sleep -Seconds 5
           
           $installDir = "C:\Program Files (x86)\AnyDesk"
           if (-not (Test-Path $installDir)) { New-Item -ItemType Directory -Path $installDir -Force | Out-Null }
@@ -46,9 +44,6 @@ jobs:
           Start-Process $dst -ArgumentList "--install `"$installDir`"", "--silent", "--start-with-win" -Wait
           Start-Sleep -Seconds 5
           Remove-Item $dst -ErrorAction SilentlyContinue
-          
-          Write-Host "Pacing workflow... Resting environment for 8 seconds."
-          Start-Sleep -Seconds 8
 
       - name: Configure Unattended Access Password & Force Enable Touch Injection
         run: |
@@ -56,7 +51,6 @@ jobs:
           if (-not (Test-Path $ad)) { $ad = "C:\Program Files\AnyDesk\AnyDesk.exe" }
           
           cmd.exe /c "echo ${{ env.ANYDESK_PASS }} | `"$ad`" --set-password"
-          Start-Sleep -Seconds 5
           
           # Force Windows to allow UI Automation and Touch Injection over RDP layers
           New-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name "EnableUIADesktopToggle" -PropertyType DWord -Value 1 -Force -ErrorAction SilentlyContinue
@@ -68,27 +62,20 @@ jobs:
           
           $path = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
           Set-ItemProperty -Path $path -Name "TaskbarGlomLevel" -Value 0 -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 5
           
           Start-Process -FilePath $ad -ArgumentList "--restart-service" -Wait
-          
-          Write-Host "Pacing workflow... Resting environment for 10 seconds."
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 5
 
       - name: Minimize Running Infrastructure Windows
         run: |
           Write-Host "Sending active command prompt windows to the taskbar tray..."
           $shell = New-Object -ComObject Shell.Application
           $shell.MinimizeAll()
-          Write-Host "Pacing workflow... Resting environment for 6 seconds."
-          Start-Sleep -Seconds 6
 
       - name: Optimize Resolution for Mobile Display
         run: |
           Write-Host "Forcing resolution calibration matrix..."
           Set-DisplayResolution -Width 1600 -Height 1200 -Force -ErrorAction SilentlyContinue
-          Write-Host "Pacing workflow... Resting environment for 7 seconds."
-          Start-Sleep -Seconds 7
 
       - name: Download & Force Consumer Build of Opera GX
         run: |
@@ -96,11 +83,10 @@ jobs:
           $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx"
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
-          Start-Sleep -Seconds 5
           
           # 1. Install browser silently
           Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
-          Start-Sleep -Seconds 8
+          Start-Sleep -Seconds 5
 
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
@@ -113,7 +99,7 @@ jobs:
           # 3. Force stop browser to release file handles entirely
           Write-Host "Halting engine layer..."
           Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 8
+          Start-Sleep -Seconds 5
 
           # 4. Target profile configurations
           $profileDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
@@ -124,7 +110,7 @@ jobs:
               Write-Host "Natively generated Preferences found. Syncing config and backup elements..."
               $configObj = Get-Content $prefPath -Raw | ConvertFrom-Json
 
-              # === LAYER 1: GxRewards Sidebar Panel Struct Check ===
+              # === LAYER 1: GxRewards Sidebar Panel ===
               if (-not $configObj.ui) { $configObj | Add-Member -MemberType NoteProperty -Name "ui" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser) { $configObj.ui | Add-Member -MemberType NoteProperty -Name "browser" -Value (New-Object PSObject) }
               if (-not $configObj.ui.browser.sidebar) { $configObj.ui.browser | Add-Member -MemberType NoteProperty -Name "sidebar" -Value (New-Object PSObject) }
@@ -155,48 +141,14 @@ jobs:
               # Flush the exact identical true configuration strings directly into BOTH places
               Set-Content -Path $prefPath -Value $finalJson -Force
               Set-Content -Path $backupPath -Value $finalJson -Force
-              Write-Host "Both configuration targets synced."
+              Write-Host "Both configuration targets synced. Files left unlocked for open system read/write rules."
           } else {
               Write-Warning "Target preferences file initialization timeout encountered."
           }
           
-          # === SPECIFIC CHRONO REQUEST ACTION SECTIONS ===
-          
-          # Locking preference files to read-only state...
-          Write-Host "Enforcing strict structural lockdown attribute rules..."
-          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true }
-          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true }
-          
-          # [RULE 1-A]: After changing preference and locking it to read only, wait 2 seconds.
-          Write-Host "Lock established. Holding execution context for 2 seconds..."
-          Start-Sleep -Seconds 2
-
-          # [RULE 1-B]: Then open opera gx.
-          Write-Host "Deploying initialized read-only runtime layout environment..."
-          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
-
-          # [RULE 1-C]: Wait 5 seconds, give it permission to read/write preference.
-          Write-Host "Holding instance execution baseline for 5 seconds..."
-          Start-Sleep -Seconds 5
-          Write-Host "Dropping file security layers. Restoring writable processing states..."
-          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $false }
-          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $false }
-
-          # [RULE 2-A]: Now wait 10 seconds.
-          Write-Host "Holding profile active with read/write clearance for 10 seconds..."
-          Start-Sleep -Seconds 10
-
-          # [RULE 2-B]: Then close it.
-          Write-Host "Sending halt instruction to clear active process memory allocations..."
-          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
-
-          # [RULE 2-C]: Wait 5 seconds before opening it again but this time let it have read/write.
-          Write-Host "Process disconnected. Pausing for 5 seconds during physical file write commit phase..."
-          Start-Sleep -Seconds 5
-
-          # Finalizing shortcut link map entries
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
+          
           if (Test-Path "$userDesktop\Opera GX.lnk") {
               Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
           }
@@ -207,13 +159,8 @@ jobs:
           $Shortcut.TargetPath = $operaExe
           $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run"
           $Shortcut.Save()
-          Start-Sleep -Seconds 5
-
-          Write-Host "Launching final interactive workspace instance (Persistent Open Read/Write)..."
-          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
           
           Write-Host "Sequence finished. Workspace deployed without locks."
-          Start-Sleep -Seconds 10
 
       - name: Fetch and Display AnyDesk Connection Address
         run: |
@@ -243,7 +190,6 @@ jobs:
           Write-Host "${Yellow} CONNECTION ID : ${Red}${cleanId}${Reset}"
           Write-Host "${Yellow} PASSWORD      : ${Red}${{ env.ANYDESK_PASS }}${Reset}"
           Write-Host "${Green}====================================================${Reset}"
-          Start-Sleep -Seconds 5
 
       - name: Keep alive
         run: |
