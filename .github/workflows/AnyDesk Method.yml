@@ -76,78 +76,35 @@ jobs:
           Write-Host "Forcing resolution calibration matrix..."
           Set-DisplayResolution -Width 1600 -Height 1200 -Force -ErrorAction SilentlyContinue
 
-      - name: Auto-Generate Live Proxy Extension Locally
-        run: |
-          Write-Host "Building standalone proxy routing extension..."
-          $extDir = "C:\WindscribeExt"
-          if (-not (Test-Path $extDir)) { New-Item -ItemType Directory -Path $extDir -Force | Out-Null }
-          
-          # 1. Manifest requesting required system proxy rules
-          $manifestJson = @'
-          {
-            "manifest_version": 3,
-            "name": "Proxy Router",
-            "version": "1.0",
-            "permissions": ["proxy"],
-            "background": {
-              "service_worker": "background.js"
-            }
-          }
-          '@
-          Set-Content -Path "$extDir\manifest.json" -Value $manifestJson -Force
-
-          # 2. Complete routing script that automatically tunnels traffic over a secure public node
-          $backgroundJs = @'
-          const config = {
-            mode: "fixed_servers",
-            rules: {
-              singleProxy: {
-                scheme: "http",
-                host: "45.72.63.181",
-                port: 80
-              },
-              bypassList: ["localhost", "127.0.0.1"]
-            }
-          };
-
-          chrome.proxy.settings.set({ value: config, scope: "regular" }, () => {
-            console.log("Traffic routing successfully established.");
-          });
-          '@
-          Set-Content -Path "$extDir\background.js" -Value $backgroundJs -Force
-          Write-Host "Local network proxy engine generated successfully."
-
-      - name: Download, Inject Profile Layout & Launch Opera GX
+      - name: Deploy Browser, Inject Target Layout, and Run Forced Capture Sequence
         run: |
           Write-Host "Fetching consumer-stable Opera GX Core..."
           $url = "https://net.geo.opera.com/opera_gx/stable/windows?utm_source=inf&utm_medium=gx"
           $installer = "$env:TEMP\OperaGXSetup.exe"
           Invoke-WebRequest -Uri $url -OutFile $installer
           
-          # 1. Install browser silently
+          # Install browser silently
           Start-Process -FilePath $installer -ArgumentList "--silent=1", "--allusers=1", "--launchbrowser=0", "--desktopshortcut=1" -Wait
           Start-Sleep -Seconds 5
 
           $operaExe = "$env:ProgramFiles\Opera GX\opera.exe"
           if (-not (Test-Path $operaExe)) { $operaExe = "$env:ProgramFiles (x86)\Opera GX\opera.exe" }
 
-          # 2. Launch normally once to build baseline directory structures
-          Write-Host "Initializing baseline templates..."
+          # Launch once to build baseline directory structures
           Start-Process -FilePath $operaExe -ArgumentList "--no-first-run"
           Start-Sleep -Seconds 15
 
-          # 3. Force stop browser to release file locks entirely
-          Write-Host "Halting engine layer..."
+          # Force stop to release file locks for layout injection
           Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
           Start-Sleep -Seconds 5
 
-          # 4. Target profile configurations
+          # Target profile configurations
           $profileDir = "$env:APPDATA\Opera Software\Opera GX Stable\Default"
           $prefPath = "$profileDir\Preferences"
           $backupPath = "$profileDir\Preferences.backup"
 
           if (Test-Path $prefPath) {
-              Write-Host "Modifying profile configuration matrices..."
+              Write-Host "Injecting custom configuration matrices..."
               $configObj = Get-Content $prefPath -Raw | ConvertFrom-Json
 
               # === LAYER 1: GxRewards Sidebar Panel ===
@@ -172,47 +129,58 @@ jobs:
                   $configObj.ui.visibility.GxRewards = $true
               }
 
+              # === LAYER 3: Native High-Speed VPN Node ===
+              if (-not $configObj.vpn) { $configObj | Add-Member -MemberType NoteProperty -Name "vpn" -Value (New-Object PSObject) }
+              
+              if ($configObj.vpn.blacklisted_interfaces -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "blacklisted_interfaces" -Value @() -Force }
+              if ($configObj.vpn.enabled -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "enabled" -Value $true -Force } else { $configObj.vpn.enabled = $true }
+              if ($configObj.vpn.on_startup -eq $null) { $configObj.vpn | Add-Member -MemberType NoteProperty -Name "on_startup" -Value $true -Force } else { $configObj.vpn.on_startup = $true }
+
               $finalJson = $configObj | ConvertTo-Json -Depth 100 -Compress
 
-              # Clear out the un-mutated files cleanly
               Remove-Item $prefPath -Force -ErrorAction SilentlyContinue
               Remove-Item $backupPath -Force -ErrorAction SilentlyContinue
 
-              # Flush the configuration settings into place
               Set-Content -Path $prefPath -Value $finalJson -Force
               Set-Content -Path $backupPath -Value $finalJson -Force
-
-              # Lock profiles to Read-Only so they survive the initial boot validation check
-              Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true
-              Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true
-              Write-Host "Initial Read-Only protection locks established."
           }
           
+          # === INITIAL HARD LOCKDOWN ===
+          Write-Host "Forcing Read-Only lock on preference templates..."
+          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $true }
+          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $true }
+
+          # RUN #1 (FORCED INITIALIZATION): Launching locked down so layout loads flawlessly
+          Write-Host "Launching forced layout run (Read-Only)..."
+          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
+          Start-Sleep -Seconds 12
+
+          # === FLIP THE SWITCH: REMOVE READ-ONLY WHILE RUNNING ===
+          Write-Host "Flipping profile locks to WRITABLE state..."
+          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $false }
+          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $false }
+          Start-Sleep -Seconds 2
+
+          # Gracefully close the browser so it commits the loaded layout back into the unlocked files
+          Write-Host "Halting browser engine to trigger a state save sequence..."
+          Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
+          # Create user-accessible shortcut
           $publicDesktop = [Environment]::GetFolderPath("CommonDesktopDirectory")
           $userDesktop = "$env:USERPROFILE\Desktop"
-          
           if (Test-Path "$userDesktop\Opera GX.lnk") {
               Move-Item -Path "$userDesktop\Opera GX.lnk" -Destination $publicDesktop -Force -ErrorAction SilentlyContinue
           }
-
-          Write-Host "Creating explicit desktop layout shortcut map..."
           $WshShell = New-Object -ComObject WScript.Shell
           $Shortcut = $WshShell.CreateShortcut("$publicDesktop\Opera GX Browser.lnk")
           $Shortcut.TargetPath = $operaExe
-          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run --load-extension=`"C:\WindscribeExt`""
+          $Shortcut.Arguments = "https://www.opera.com/gx/forsaken --no-first-run"
           $Shortcut.Save()
 
-          # 5. FOREGROUND SEQUENTIAL UNLOCK PIPELINE
-          Write-Host "Launching main interactive instance..."
-          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run", "--load-extension=`"C:\WindscribeExt`""
-          
-          Write-Host "Holding sequence state for 12 seconds while layout registers..."
-          Start-Sleep -Seconds 12
-          
-          Write-Host "Forcing production profile release! Unlocking files to write-enabled..."
-          if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $false }
-          if (Test-Path $backupPath) { Set-ItemProperty -Path $backupPath -Name IsReadOnly -Value $false }
-          Write-Host "System files unlocked successfully. Browser state is now writable."
+          # RUN #2 (PERSISTENT INTERACTIVE INSTANCE): Opens completely normal and writable for the user
+          Write-Host "Launching final interactive workspace instance (fully writable)..."
+          Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
 
       - name: Fetch and Display AnyDesk Connection Address
         run: |
