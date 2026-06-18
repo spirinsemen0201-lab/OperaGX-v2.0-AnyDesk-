@@ -105,6 +105,10 @@ jobs:
               Start-Sleep -Seconds 2
           }
 
+          # BONUS UPGRADE: Hold initialization focus for 10 seconds to fully compile the profile structures cleanly
+          Write-Host "Allowing browser baseline profile data to stabilize for 10 seconds..."
+          Start-Sleep -Seconds 10
+
           # 3. Force stop browser to release file handles entirely
           Write-Host "Halting engine layer..."
           Stop-Process -Name "opera" -Force -ErrorAction SilentlyContinue
@@ -122,7 +126,7 @@ jobs:
               if (-not $configHashtable['ui'].ContainsKey('browser')) { $configHashtable['ui']['browser'] = @{} }
               if (-not $configHashtable['ui']['browser'].ContainsKey('sidebar')) { $configHashtable['ui']['browser']['sidebar'] = @{} }
               
-              # REVIOUS LOGIC TARGET: Reconstructed mapping for GxRewards structural hierarchy
+              # RECONSTRUCTED TARGET: Mapping for GxRewards structural hierarchy
               $configHashtable['ui']['browser']['sidebar']['item_prefs'] = @{
                   "visibility" = @{
                       "GxRewards" = $true
@@ -190,9 +194,9 @@ jobs:
           Write-Host "Launching layout execution instance under read-only constraints..."
           Start-Process -FilePath $operaExe -ArgumentList "https://www.opera.com/gx/forsaken", "--no-first-run"
 
-          # EXTENDED FOCUS WINDOW: Increased from 5 to 15 seconds to let Opera completely map file settings
-          Write-Host "Holding instance focus for 15 seconds..."
-          Start-Sleep -Seconds 15
+          # OPTIMIZED TARGET BUFFER: Shifted focus timing constraint window to exactly 10 seconds
+          Write-Host "Holding instance focus for 10 seconds..."
+          Start-Sleep -Seconds 10
           
           Write-Host "Unlocking file layers. Restoring read/write system permissions..."
           if (Test-Path $prefPath) { Set-ItemProperty -Path $prefPath -Name IsReadOnly -Value $false }
